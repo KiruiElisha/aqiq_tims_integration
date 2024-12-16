@@ -94,67 +94,55 @@ def initialize_vat_values():
 
 
 def calculate_tax(item, tax_category):
-    """Calculate tax for an item based on its tax template
-    
-    Args:
-        item: Sales Invoice Item document
-        tax_category: "Inclusive" or "Exclusive"
-        
-    Returns:
-        tuple: (new_item dict, taxable_amount, tax_amount)
-    """
-    # Get tax rate from item_tax_rate if available
+    """Calculate tax for an item based on its tax template"""
+    # Initialize tax rate to 0
     tax_rate = 0
-    if item.item_tax_rate:
+    
+    # Check if item has zero-rated tax template
+    if item.item_tax_template and "ZERO" in item.item_tax_template.upper():
+        tax_rate = 0
+    # Otherwise check item_tax_rate
+    elif item.item_tax_rate:
         try:
             tax_rates = frappe.parse_json(item.item_tax_rate)
             # Get first tax rate value
             tax_rate = next(iter(tax_rates.values())) if tax_rates else 0
         except Exception:
             frappe.log_error("Failed to parse item_tax_rate", "Tax Calculation Error")
-    
-    # Default to 16% if no valid tax rate found and not zero-rated
-    if tax_rate == 0 and not item.item_tax_template.upper().startswith("ZERO"):
-        tax_rate = 16
 
     tax_value = 1 + (tax_rate / 100)
-    qty = abs(item.qty)  # Use actual quantity from item
-    base_net_rate = abs(item.base_net_amount / qty if qty else 0)
-
-    unit_price = round(base_net_rate * tax_value, 2)
-    discount = 0.0  # Can be enhanced to use item.discount_amount
+    qty = abs(item.qty)
+    unit_price = abs(item.rate)  # Use rate directly instead of calculating
+    discount = 0.0
 
     new_item = {
         "productCode": item.item_code,
         "productDesc": item.item_name,
         "quantity": qty,
-        "unitPrice": abs(unit_price),
-        "discount": abs(discount),
-        "taxtype": int(tax_rate)  # This will be 0 for zero-rated items
+        "unitPrice": unit_price,
+        "discount": discount,
+        "taxtype": int(tax_rate)
     }
 
-    # Calculate amounts based on tax category
-    if tax_category == "Inclusive":
-        taxable_amount = (unit_price * qty - discount) / tax_value
-        tax_amount = taxable_amount * (tax_rate / 100)
+    # For zero-rated items, use VAT_E category
+    if tax_rate == 0:
+        taxable_amount = unit_price * qty
+        tax_amount = 0
     else:
-        taxable_amount = unit_price * qty - discount
-        tax_amount = taxable_amount * (tax_rate / 100)
+        if tax_category == "Inclusive":
+            taxable_amount = (unit_price * qty) / tax_value
+            tax_amount = taxable_amount * (tax_rate / 100)
+        else:
+            taxable_amount = unit_price * qty
+            tax_amount = taxable_amount * (tax_rate / 100)
 
     return new_item, taxable_amount, tax_amount
 
 
 def update_vat_values(vat_values, tax_type, taxable_amount, tax_amount):
-    frappe.logger().debug(f"""
-        VAT Update:
-        Tax Type: {tax_type}
-        Taxable Amount: {taxable_amount}
-        Tax Amount: {tax_amount}
-    """)
-
-    if not tax_type:
-        vat_values["VAT_A_NET"] += taxable_amount
-        vat_values["VAT_A"] += tax_amount
+    # If tax_type contains "ZERO", treat as zero-rated
+    if tax_type and "ZERO" in tax_type.upper():
+        vat_values["VAT_E_NET"] += taxable_amount
         return vat_values
 
     tax_mapping = {
@@ -174,11 +162,11 @@ def update_vat_values(vat_values, tax_type, taxable_amount, tax_amount):
     if tax_type in tax_mapping:
         net_key, tax_key = tax_mapping[tax_type]
         vat_values[net_key] += taxable_amount
-        if tax_key != "VAT_E" and tax_key != "VAT_F":  # Don't add tax amount for zero-rated and exempt
+        if tax_key != "VAT_E" and tax_key != "VAT_F":
             vat_values[tax_key] += tax_amount
     else:
-        vat_values["VAT_A_NET"] += taxable_amount
-        vat_values["VAT_A"] += tax_amount
+        # For zero-rated items, use VAT_E
+        vat_values["VAT_E_NET"] += taxable_amount
 
     return vat_values
 
