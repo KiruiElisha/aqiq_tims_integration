@@ -1,0 +1,43 @@
+{
+    "name": "TIMS Device Setup",
+    "doctype": "DocType",
+    "is_single": 1,
+    "fields": [
+        {
+            "fieldname": "send_invoices_on_submit",
+            "label": "Send Invoices to KRA on Submit",
+            "fieldtype": "Check",
+            "default": 1
+        },
+        {
+            "fieldname": "send_credit_notes",
+            "label": "Send Credit Notes to KRA",
+            "fieldtype": "Check",
+            "default": 1
+        },
+        {
+            "fieldname": "allow_submission_on_failure", 
+            "label": "Allow Invoice Submission on TIMS Failure",
+            "fieldtype": "Check",
+            "default": 0
+        },
+        {
+            "fieldname": "section_break_1",
+            "fieldtype": "Section Break",
+            "label": "Device Configuration"
+        },
+        {
+            "fieldname": "device_serial_number",
+            "label": "Device Serial Number",
+            "fieldtype": "Data",
+            "reqd": 1
+        },
+        {
+            "fieldname": "status",
+            "label": "Status",
+            "fieldtype": "Select",
+            "options": "\nActive\nInactive",
+            "reqd": 1
+        }
+    ]
+} 

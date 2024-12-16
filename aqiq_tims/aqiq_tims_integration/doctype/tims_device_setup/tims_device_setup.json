@@ -1,0 +1,109 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2024-12-05 15:13:55.305109",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "device_endpoint_settings_section",
+  "ip",
+  "column_break_eqba",
+  "port",
+  "column_break_wiyt",
+  "status",
+  "additional_settings_section",
+  "use_system_naming_series_as_rct_no",
+  "send_invoices_to_kra_on_submit",
+  "column_break_dbpn",
+  "allow_other_day_posting"
+ ],
+ "fields": [
+  {
+   "fieldname": "device_endpoint_settings_section",
+   "fieldtype": "Section Break",
+   "label": "Device Endpoint Settings"
+  },
+  {
+   "description": "Input Device IP",
+   "fieldname": "ip",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "IP",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_eqba",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Input device port",
+   "fieldname": "port",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Port",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_wiyt",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Device status",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Active\nInactive"
+  },
+  {
+   "fieldname": "additional_settings_section",
+   "fieldtype": "Section Break",
+   "label": "Additional Settings"
+  },
+  {
+   "default": "0",
+   "fieldname": "use_system_naming_series_as_rct_no",
+   "fieldtype": "Check",
+   "label": "Use System Naming Series as RCT No"
+  },
+  {
+   "fieldname": "column_break_dbpn",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_other_day_posting",
+   "fieldtype": "Check",
+   "label": "Allow Other Day Posting"
+  },
+  {
+   "default": "0",
+   "fieldname": "send_invoices_to_kra_on_submit",
+   "fieldtype": "Check",
+   "label": "Send Invoices To KRA On Submit"
+  }
+ ],
+ "hide_toolbar": 1,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2024-12-05 16:26:49.832156",
+ "modified_by": "Administrator",
+ "module": "AQIQ TIMS Integration",
+ "name": "TIMS Device Setup",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

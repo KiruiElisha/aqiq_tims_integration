@@ -1,0 +1,94 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2024-07-09 15:26:25.084792",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "response_code",
+  "tin",
+  "cusn",
+  "cuin",
+  "signing_time",
+  "invoice_number",
+  "column_break_pkxj",
+  "qr_code",
+  "message",
+  "payload_sent"
+ ],
+ "fields": [
+  {
+   "fieldname": "response_code",
+   "fieldtype": "Data",
+   "label": "Response Code"
+  },
+  {
+   "fieldname": "tin",
+   "fieldtype": "Data",
+   "label": "TSIN"
+  },
+  {
+   "fieldname": "cusn",
+   "fieldtype": "Data",
+   "label": "CUSN"
+  },
+  {
+   "fieldname": "cuin",
+   "fieldtype": "Data",
+   "label": "CUIN"
+  },
+  {
+   "fieldname": "signing_time",
+   "fieldtype": "Datetime",
+   "label": "Signing Time"
+  },
+  {
+   "fieldname": "invoice_number",
+   "fieldtype": "Data",
+   "label": "Invoice Number"
+  },
+  {
+   "fieldname": "column_break_pkxj",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "qr_code",
+   "fieldtype": "Data",
+   "label": "QR Code"
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Small Text",
+   "label": "Message"
+  },
+  {
+   "fieldname": "payload_sent",
+   "fieldtype": "Text",
+   "label": "Payload Sent"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2024-07-17 06:25:59.180677",
+ "modified_by": "Administrator",
+ "module": "AQIQ TIMS Integration",
+ "name": "KRA Response",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

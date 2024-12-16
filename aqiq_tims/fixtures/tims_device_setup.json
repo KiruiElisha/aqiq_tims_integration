@@ -1,0 +1,14 @@
+[
+ {
+  "allow_other_day_posting": 1,
+  "docstatus": 0,
+  "doctype": "TIMS Device Setup",
+  "ip": "196.202.170.94",
+  "modified": "2024-12-09 11:43:28.730687",
+  "name": "TIMS Device Setup",
+  "port": "9000",
+  "send_invoices_to_kra_on_submit": 0,
+  "status": "Active",
+  "use_system_naming_series_as_rct_no": 1
+ }
+]
