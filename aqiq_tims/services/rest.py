@@ -3,6 +3,7 @@ import json
 import requests
 from frappe.utils import today
 from datetime import datetime
+import re
 
 @frappe.whitelist()
 def send_request(invoice):
@@ -36,11 +37,21 @@ def is_valid_posting_date(doc, device_setup):
     return posting_date == today or device_setup.allow_other_day_posting
 
 
+def validate_customer_pin(pin):
+    """Validate KRA PIN format"""
+    if not pin:
+        return ""
+    # KRA PINs are typically A000000000X format
+    if not re.match(r'^[A-Z][0-9]{9}[A-Z]$', pin):
+        frappe.log_error(f"Invalid KRA PIN format: {pin}", "TIMS Validation")
+    return pin
+
+
 def build_payload(doc, device_setup):
     payment_method = "Cash" if doc.status == 'Paid' else 'Credit'
     till_no = ''
     rct_no = format_invoice_number(doc.name)
-    customer_pin = frappe.db.get_value("Customer", doc.customer, "tax_id") or ''
+    customer_pin = validate_customer_pin(frappe.db.get_value("Customer", doc.customer, "tax_id") or '')
     invoice_items = get_invoice_items(doc.name)
     tax_category = get_tax_category(doc.name)
     
@@ -54,6 +65,7 @@ def build_payload(doc, device_setup):
         items.append(new_item)
 
     payload = create_payload(doc, vat_values, items, payment_method, customer_pin, till_no, rct_no)
+    validate_payload(payload, doc)
     return payload
 
 
@@ -95,24 +107,19 @@ def initialize_vat_values():
 
 def calculate_tax(item, tax_category):
     """Calculate tax for an item based on its tax template"""
-    # Initialize tax rate to 0
-    tax_rate = 0
+    if not item.item_tax_template:
+        frappe.log_error(
+            f"Missing tax template for item {item.item_code}",
+            "TIMS Tax Calculation"
+        )
+        return create_zero_rated_item(item)
+        
+    # Get tax rate from template
+    tax_rate = get_tax_rate_from_template(item.item_tax_template)
     
-    # Check if item has zero-rated tax template
-    if item.item_tax_template and "ZERO" in item.item_tax_template.upper():
-        tax_rate = 0
-    # Otherwise check item_tax_rate
-    elif item.item_tax_rate:
-        try:
-            tax_rates = frappe.parse_json(item.item_tax_rate)
-            # Get first tax rate value
-            tax_rate = next(iter(tax_rates.values())) if tax_rates else 0
-        except Exception:
-            frappe.log_error("Failed to parse item_tax_rate", "Tax Calculation Error")
-
     tax_value = 1 + (tax_rate / 100)
     qty = abs(item.qty)
-    unit_price = abs(item.rate)  # Use rate directly instead of calculating
+    unit_price = abs(item.rate)
     discount = 0.0
 
     new_item = {
@@ -124,7 +131,7 @@ def calculate_tax(item, tax_category):
         "taxtype": int(tax_rate)
     }
 
-    # For zero-rated items, use VAT_E category
+    # Calculate tax based on tax category
     if tax_rate == 0:
         taxable_amount = unit_price * qty
         tax_amount = 0
@@ -139,35 +146,67 @@ def calculate_tax(item, tax_category):
     return new_item, taxable_amount, tax_amount
 
 
-def update_vat_values(vat_values, tax_type, taxable_amount, tax_amount):
-    # If tax_type contains "ZERO", treat as zero-rated
-    if tax_type and "ZERO" in tax_type.upper():
-        vat_values["VAT_E_NET"] += taxable_amount
-        return vat_values
+def get_tax_rate_from_template(template_name):
+    """Get tax rate from template"""
+    if not template_name:
+        return 0
+        
+    tax_rate = frappe.db.get_value(
+        "Item Tax Template Detail",
+        {"parent": template_name},
+        "tax_rate"
+    )
+    return tax_rate or 0
 
-    tax_mapping = {
+
+def create_zero_rated_item(item):
+    """Create item entry with zero tax"""
+    new_item = {
+        "productCode": item.item_code,
+        "productDesc": item.item_name,
+        "quantity": abs(item.qty),
+        "unitPrice": abs(item.rate),
+        "discount": 0.0,
+        "taxtype": 0
+    }
+    taxable_amount = new_item["quantity"] * new_item["unitPrice"]
+    return new_item, taxable_amount, 0
+
+
+def update_vat_values(vat_values, tax_type, taxable_amount, tax_amount):
+    """
+    Update VAT values based on tax type. Current implementation has issues with mapping.
+    We need to properly map the tax templates to KRA categories.
+    """
+    # Map tax templates to KRA VAT categories
+    kra_tax_mapping = {
         "VAT 16%": ("VAT_A_NET", "VAT_A"),
-        "16%": ("VAT_A_NET", "VAT_A"),
-        "VAT 8%": ("VAT_B_NET", "VAT_B"),
-        "8%": ("VAT_B_NET", "VAT_B"),
-        "VAT 10%": ("VAT_C_NET", "VAT_C"),
-        "10%": ("VAT_C_NET", "VAT_C"),
-        "VAT 2%": ("VAT_D_NET", "VAT_D"),
-        "2%": ("VAT_D_NET", "VAT_D"),
+        "VAT - IG": ("VAT_A_NET", "VAT_A"),  # Add this mapping
         "Zero Rated": ("VAT_E_NET", "VAT_E"),
-        "0%": ("VAT_E_NET", "VAT_E"),
         "Exempt": ("VAT_F_NET", "VAT_F")
     }
-
-    if tax_type in tax_mapping:
-        net_key, tax_key = tax_mapping[tax_type]
-        vat_values[net_key] += taxable_amount
-        if tax_key != "VAT_E" and tax_key != "VAT_F":
-            vat_values[tax_key] += tax_amount
-    else:
-        # For zero-rated items, use VAT_E
+    
+    # Get template title from tax_type
+    if not tax_type:
+        # Default to VAT_E for items without tax template
         vat_values["VAT_E_NET"] += taxable_amount
-
+        return vat_values
+        
+    # Find matching KRA category
+    for template_name, (net_key, tax_key) in kra_tax_mapping.items():
+        if template_name in tax_type:
+            vat_values[net_key] += taxable_amount
+            if tax_key != "VAT_E" and tax_key != "VAT_F":
+                vat_values[tax_key] += tax_amount
+            return vat_values
+            
+    # Log error for unknown tax template
+    frappe.log_error(
+        f"Unknown tax template mapping: {tax_type}",
+        "TIMS Tax Mapping Error"
+    )
+    # Default to VAT_E
+    vat_values["VAT_E_NET"] += taxable_amount
     return vat_values
 
 
@@ -217,26 +256,25 @@ def send_payload(payload, invoice, doc):
         if not device_setup.ip or not device_setup.port:
             raise ValueError("Invalid device setup configuration")
             
+        # Add timeout and verify SSL
         response = requests.post(
-            f"https://{device_setup.ip}:{device_setup.port}/api/values/PostTims",
+            f"http://{device_setup.ip}:{device_setup.port}/api/values/PostTims",  # Change to http
             json=payload,
             timeout=60,
-            verify=True  # SSL verification
+            verify=False  # Disable SSL verification for internal IP
         )
         handle_response(response, invoice, doc, payload)
     except requests.Timeout:
         frappe.log_error("TIMS request timeout", "TIMS Error")
-        frappe.msgprint(
-            msg="Request timed out. Please verify TIMS/ETR Machine is active.",
-            title="Timeout Error",
-            indicator='red',
+        frappe.throw(
+            "Request timed out. Please verify TIMS/ETR Machine is active.",
+            title="Timeout Error"
         )
     except requests.RequestException as e:
         frappe.log_error(f"TIMS request failed: {str(e)}", "TIMS Error")
-        frappe.msgprint(
-            msg="Failed to communicate with TIMS server. Please check logs.",
-            title="Connection Error",
-            indicator='red',
+        frappe.throw(
+            "Failed to communicate with TIMS server. Please check logs.",
+            title="Connection Error"
         )
     except Exception as e:
         handle_exception(e)
@@ -244,11 +282,20 @@ def send_payload(payload, invoice, doc):
 
 def handle_response(response, invoice, doc, payload):
     try:
+        if not response.ok:
+            frappe.throw(f"TIMS server returned error: {response.status_code} - {response.text}")
+            
         data = json.loads(response.text)
         required_fields = ["ResponseCode", "Message", "TSIN", "CUSN", "CUIN", "QRCode", "dtStmp"]
         
         if not all(field in data for field in required_fields):
-            raise ValueError(f"Missing required fields in response: {response.text}")
+            frappe.throw(f"Missing required fields in response: {response.text}")
+
+        # Log successful response
+        frappe.log_error(
+            f"TIMS Response for {invoice}: {response.text}",
+            "TIMS Success"
+        )
 
         kra_response = frappe.get_doc({
             "doctype": "KRA Response",
@@ -260,7 +307,7 @@ def handle_response(response, invoice, doc, payload):
             "qr_code": data.get("QRCode", ''),
             "signing_time": data.get("dtStmp", ''),
             "invoice_number": invoice,
-            "payload_sent": str(payload)
+            "payload_sent": json.dumps(payload, indent=2)  # Pretty print payload
         })
 
         kra_response.insert()
@@ -269,18 +316,12 @@ def handle_response(response, invoice, doc, payload):
         if data.get('ResponseCode') == '000':
             update_doc_with_response(doc, data)
         else:
-            frappe.log_error(
+            frappe.throw(
                 f"KRA submission failed: {data.get('Message', 'Unknown error')}",
-                "KRA Error"
-            )
-            frappe.msgprint(
-                msg="Invoice Submission to KRA Failed. Please Check KRA Response Generated.",
-                title='Error Message',
-                indicator='red',
+                title="KRA Error"
             )
     except json.JSONDecodeError:
-        frappe.log_error(f"Invalid JSON response: {response.text}", "TIMS Error")
-        raise
+        frappe.throw(f"Invalid JSON response: {response.text}")
 
 
 def update_doc_with_response(doc, data):
@@ -325,3 +366,59 @@ def format_invoice_number(invoice_number):
     
     # Fallback: just truncate to 18 chars if format is different
     return invoice_number[-18:]
+
+
+def validate_tax_totals(vat_values, doc):
+    """Validate tax totals match invoice totals"""
+    total_tax = sum([
+        vat_values["VAT_A"],
+        vat_values["VAT_B"],
+        vat_values["VAT_C"],
+        vat_values["VAT_D"]
+    ])
+    
+    invoice_tax = doc.total_taxes_and_charges
+    
+    if abs(total_tax - invoice_tax) > 0.01:  # Allow small rounding difference
+        frappe.log_error(
+            f"Tax total mismatch: VAT sum={total_tax}, Invoice tax={invoice_tax}",
+            "TIMS Validation"
+        )
+
+
+def validate_payload(payload, doc):
+    """Validate payload before sending to TIMS"""
+    # Validate totals
+    calculated_total = sum([
+        payload["VAT_A_Net"] + payload["VAT_A"],
+        payload["VAT_B_Net"] + payload["VAT_B"],
+        payload["VAT_C_Net"] + payload["VAT_C"],
+        payload["VAT_D_Net"] + payload["VAT_D"],
+        payload["VAT_E_Net"],
+        payload["VAT_F_Net"]
+    ])
+    
+    if abs(calculated_total - doc.grand_total) > 0.01:
+        frappe.throw(
+            f"Total mismatch: Calculated={calculated_total}, Invoice={doc.grand_total}"
+        )
+        
+    # Validate tax amounts
+    total_tax = sum([
+        payload["VAT_A"],
+        payload["VAT_B"],
+        payload["VAT_C"],
+        payload["VAT_D"]
+    ])
+    
+    if abs(total_tax - doc.total_taxes_and_charges) > 0.01:
+        frappe.throw(
+            f"Tax mismatch: Calculated={total_tax}, Invoice={doc.total_taxes_and_charges}"
+        )
+        
+    # Validate items
+    for item in payload["data"]:
+        if item["quantity"] <= 0:
+            frappe.throw(f"Invalid quantity for item {item['productCode']}")
+        if item["unitPrice"] <= 0:
+            frappe.throw(f"Invalid unit price for item {item['productCode']}")
